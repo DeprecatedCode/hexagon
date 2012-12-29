@@ -1,0 +1,15 @@
+{
+  "name": "hexagon",
+  "version": "0.1.0",
+  "description": "A simple, modular framework for creating a server application.",
+  "private": false,
+  "main": "hexagon.js",
+  "author": "Nate Ferrero (http://nateferrero.com)",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/NateFerrero/hexagon.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+  }
+}
