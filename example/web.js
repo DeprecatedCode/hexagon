@@ -8,7 +8,7 @@ var hexagon = require('..');
 /**
  * Create the app instance
  */
-var app = hexagon('./shared');
+var app = hexagon('./example/shared');
 
 /**
  * Listen for requests

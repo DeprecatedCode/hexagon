@@ -14,35 +14,56 @@ var app = function(location) {
  */
 p.dir = function(location) {
     var self = this;
-    return {
-        _lookup: function(next, req, ret) {
-            location += '/' + next;
-            fs.stat(location, function(err, stats) {
-                if(err) throw err;
-                if(stats.isDirectory()) {
-                    ret(self.dir(location));
-                } else {
-                    var ext = path.extname(location);
-                    switch(ext) {
+    var lookup = function(next, req, ret) {
+        var loc = location + (location.substr(-1, 1) == '/' ? '' : '/') + next;
+        fs.stat(loc, function(err, stats) {
+            if(err) {
+                ret({"_*": {"error": "Path " + loc + " does not exist"}});
+            } else if(stats.isDirectory()) {
+                ret(self.dir(loc));
+            } else {
+                var ext = path.extname(loc);
+                switch(ext) {
+                    
+                    /**
+                     * Require JS files
+                     */
+                    case '.js':
+                        ret(require(loc));
+                        break;
                         
-                        /**
-                         * Require JS files
-                         */
-                        case '.js':
-                            ret(require(location));
-                            break;
-                            
-                        /**
-                         * Error on other extensions
-                         */
-                        default:
-                            throw new Error("Extension " + ext + " not supported");
-                    }
+                    /**
+                     * Error on other extensions
+                     */
+                    default:
+                        ret({"_*": {"error": "Extension " + ext + " not supported"}});
                 }
-            });
-        }
+            }
+        });
+    };
+    
+    /**
+     * Directory node proxies all requests to index.js
+     */
+    return {
+        _lookup:    lookup,
+        _get:       this.indexMethod(lookup, '_get'),
+        _post:      this.indexMethod(lookup, '_post'),
+        _put:       this.indexMethod(lookup, '_put'),
+        _delete:    this.indexMethod(lookup, '_delete')
     };
 };
+
+/**
+ * Index method
+ */
+p.indexMethod = function(lookup, method) {
+    return function(req, ret) {
+        lookup('index.js', req, function(data) {
+            data[method](req, ret);
+        });        
+    }
+}
 
 /**
  * Listen on port and ip
@@ -83,7 +104,6 @@ p.handle = function(req, resp) {
      */
     req._hexagon.timer = setTimeout(function() {
         ret({"error": "Application timeout"});
-        throw new Error("Application timeout on " + req.url);
     }, this.timeout);
     
     /**
@@ -132,7 +152,15 @@ p.load = function(segments, req, ret) {
      * Immediately send non-objects
      */
     if(typeof node === 'object') {
-        node['_' + req.method.toLowerCase()](req, ret);
+        var value = node['_' + req.method.toLowerCase()];
+        if(typeof value === 'undefined' && typeof node['_*'] !== 'undefined') {
+            value = node['_*'];
+        }
+        if(typeof value === 'function') {
+            value(req, ret);
+        } else {
+            ret(value);
+        }
     } else {
         ret(node);
     }
@@ -140,6 +168,6 @@ p.load = function(segments, req, ret) {
 
 app.prototype = p;
 
-module.exports = function() {
-    return new app();
+module.exports = function(location) {
+    return new app(location);
 };
