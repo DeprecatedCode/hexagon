@@ -3,96 +3,11 @@
  * 
  * @author Nate Ferrero
  */
-var app = function(location) {
-    this.root = this.dir(path.resolve(location));
+var app = function(root) {
+    this.root = root;
     this.timeout = 5000;
     this.debug = false;
-}, p = {}, fs = require('fs'),
-         path = require('path');
-    
-/**
- * Attach a dir handler
- */
-p.dir = function(location) {
-    var self = this;
-    
-    if(self.debug) {
-        console.log("Location handler at " + location);
-    }
-    
-    var lookup = function(next, req, ret) {
-        var loc = location + (location.substr(-1, 1) == '/' ? '' : '/') + next;
-        
-        if(self.debug) {
-            console.log("Looking for " + loc);
-        }
-        
-        fs.stat(loc, function(err, stats) {
-            if(err) {
-                ret({"_*": {"error": "Path " + loc + " does not exist"}});
-            } else if(stats.isDirectory()) {
-                ret(self.dir(loc));
-            } else {
-                var ext = path.extname(loc);
-                switch(ext) {
-                    
-                    /**
-                     * Require JS files
-                     */
-                    case '.js':
-                        
-                        if(self.debug) {
-                            console.log("Found JS file at " + loc);
-                        }
-                        
-                        ret(require(loc));
-                        break;
-                        
-                    /**
-                     * Error on other extensions
-                     */
-                    default:
-                        ret({"_*": {"error": "Extension " + ext + " not supported"}});
-                }
-            }
-        });
-    };
-    
-    /**
-     * Directory node proxies all requests to index.js
-     */
-    return {
-        _location:  location,
-        _lookup:    lookup,
-        _get:       this.indexMethod(lookup, '_get'),
-        _post:      this.indexMethod(lookup, '_post'),
-        _put:       this.indexMethod(lookup, '_put'),
-        _delete:    this.indexMethod(lookup, '_delete')
-    };
-};
-
-/**
- * Index method
- */
-p.indexMethod = function(lookup, method) {
-    var self = this;
-    return function(req, ret) {
-        lookup('index.js', req, function(data) {
-            if(typeof data[method] === 'undefined' &&
-                typeof data['_*'] !== 'undefined') {
-                    method = '_*';
-            }
-            
-            if(self.debug) {
-                console.log("Index method " + method);
-            }
-                    
-            data[method](req, function(data) {
-                ret(data, 'index.js');
-            });
-        });        
-    }
-}
+}, p = {};
 
 /**
  * Listen on port and ip
@@ -180,7 +95,8 @@ p.load = function(segments, req, ret) {
                 return node._lookup(next, req, this.loader(node, next, segments, req, ret));
             }
 
-            throw new ReferenceError("Component " + c + " not found");
+            ret({"error": "Component " + c + " not found"});
+            return;
         }
         node = node[next];
     }
