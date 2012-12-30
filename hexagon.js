@@ -6,6 +6,7 @@
 var app = function(location) {
     this.root = this.dir(path.resolve(location));
     this.timeout = 5000;
+    this.debug = false;
 }, p = {}, fs = require('fs'),
          path = require('path');
     
@@ -14,8 +15,18 @@ var app = function(location) {
  */
 p.dir = function(location) {
     var self = this;
+    
+    if(self.debug) {
+        console.log("Location handler at " + location);
+    }
+    
     var lookup = function(next, req, ret) {
         var loc = location + (location.substr(-1, 1) == '/' ? '' : '/') + next;
+        
+        if(self.debug) {
+            console.log("Looking for " + loc);
+        }
+        
         fs.stat(loc, function(err, stats) {
             if(err) {
                 ret({"_*": {"error": "Path " + loc + " does not exist"}});
@@ -29,6 +40,11 @@ p.dir = function(location) {
                      * Require JS files
                      */
                     case '.js':
+                        
+                        if(self.debug) {
+                            console.log("Found JS file at " + loc);
+                        }
+                        
                         ret(require(loc));
                         break;
                         
@@ -46,6 +62,7 @@ p.dir = function(location) {
      * Directory node proxies all requests to index.js
      */
     return {
+        _location:  location,
         _lookup:    lookup,
         _get:       this.indexMethod(lookup, '_get'),
         _post:      this.indexMethod(lookup, '_post'),
@@ -58,9 +75,21 @@ p.dir = function(location) {
  * Index method
  */
 p.indexMethod = function(lookup, method) {
+    var self = this;
     return function(req, ret) {
         lookup('index.js', req, function(data) {
-            data[method](req, ret);
+            if(typeof data[method] === 'undefined' &&
+                typeof data['_*'] !== 'undefined') {
+                    method = '_*';
+            }
+            
+            if(self.debug) {
+                console.log("Index method " + method);
+            }
+                    
+            data[method](req, function(data) {
+                ret(data, 'index.js');
+            });
         });        
     }
 }
@@ -87,11 +116,16 @@ p.handle = function(req, resp) {
      * Callback
      */
     var ret = function(data) {
-        if(typeof data !== 'string') {
-            data = JSON.stringify(data);
+        if(typeof data === 'function') {
+            data(req, ret);
         }
-        resp.end(data);
-        clearTimeout(req._hexagon.timer);
+        else {
+            if(typeof data !== 'string') {
+                data = JSON.stringify(data);
+            }
+            resp.end(data);
+            clearTimeout(req._hexagon.timer);
+        }
     };
     
     /**
@@ -111,6 +145,9 @@ p.handle = function(req, resp) {
      */
     var segments = req.url.split('/');
     segments.shift();
+    if(segments.length > 0 && segments[segments.length - 1] === '') {
+        segments.pop();
+    }
     return this.load(segments, req, ret);
 };
 
@@ -119,8 +156,8 @@ p.handle = function(req, resp) {
  */
 p.loader = function(node, next, segments, req, ret) {
     var self = this;
-    return function(data) {
-        node[next] = data;
+    return function(data, override) {
+        node[override || next] = data;
         self.load(segments, req, ret);
     };
 };
@@ -130,10 +167,10 @@ p.loader = function(node, next, segments, req, ret) {
  */
 p.load = function(segments, req, ret) {
     var node = this.root;
-    var location = '';
+    var c = '';
     for(var i = 0; i < segments.length; i++) {
         var next = segments[i];
-        location += (location === '' ? '' : '.') + next;
+        c += (c === '' ? '' : '/') + next;
         if(typeof node[next] === 'undefined') {
 
             /**
@@ -143,7 +180,7 @@ p.load = function(segments, req, ret) {
                 return node._lookup(next, req, this.loader(node, next, segments, req, ret));
             }
 
-            throw new ReferenceError("Component " + location + " not found");
+            throw new ReferenceError("Component " + c + " not found");
         }
         node = node[next];
     }
